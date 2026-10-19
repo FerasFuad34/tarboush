@@ -58,8 +58,11 @@ def _short(text: str, limit: int = 220) -> str:
 # ============================ المزودون ============================
 def search_youtube(query: str, limit: int = 3) -> List[Dict]:
     """
-    بحث YouTube حقيقي عبر yt-dlp (نفس محرك yt-dlp المستخدم في تحميل الروابط).
+    بحث YouTube حقيقي عبر yt-dlp (نفس محرك التحميل).
     نفلتر المدة: 90 ثانية إلى ساعتين — لتجنّب المقاطع القصيرة والبثوث الطويلة.
+
+    ملاحظة واقعية: يوتيوب يحجب أحياناً عناوين مراكز البيانات (403 Forbidden)،
+    لذلك نعيد المحاولة بعميل مختلف (android/web) قبل التسليم بفشل البحث.
     """
     try:
         import yt_dlp
@@ -67,41 +70,60 @@ def search_youtube(query: str, limit: int = 3) -> List[Dict]:
         print("[Resources] yt-dlp غير مثبت")
         return []
 
-    opts = {
+    cache_key = ("youtube", query, limit)
+    cached = _cache_get(cache_key)
+    if cached is not None:
+        return cached
+
+    base_opts = {
         "quiet": True,
         "no_warnings": True,
         "extract_flat": True,
         "skip_download": True,
         "socket_timeout": settings.resource_search_timeout,
     }
+    clients: List[Dict] = [
+        {},                                                # الافتراضي (web)
+        {"extractor_args": {"youtube": {"player_client": ["android"]}}},
+        {"extractor_args": {"youtube": {"player_client": ["tv"]}}},
+    ]
+
     results: List[Dict] = []
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(f"ytsearch{limit * 2}:{query}", download=False)
-        for entry in (info or {}).get("entries") or []:
-            vid = entry.get("id")
-            if not vid:
-                continue
-            duration = entry.get("duration") or 0
-            if duration and not (90 <= duration <= 7200):
-                continue
-            results.append(
-                {
-                    "provider": "youtube",
-                    "title": _short(entry.get("title") or "فيديو", 140),
-                    "url": f"https://www.youtube.com/watch?v={vid}",
-                    "snippet": _short(entry.get("description") or "", 200),
-                    "thumbnail": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg",
-                    "duration_seconds": int(duration) if duration else None,
-                    "channel": _short(entry.get("channel") or entry.get("uploader") or "", 60),
-                    "lang": "ar",
-                }
-            )
-            if len(results) >= limit:
+    for attempt, extra in enumerate(clients, 1):
+        opts = {**base_opts, **extra}
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(f"ytsearch{limit * 2}:{query}", download=False)
+            for entry in (info or {}).get("entries") or []:
+                vid = entry.get("id")
+                if not vid:
+                    continue
+                duration = entry.get("duration") or 0
+                if duration and not (90 <= duration <= 7200):
+                    continue
+                results.append(
+                    {
+                        "provider": "youtube",
+                        "title": _short(entry.get("title") or "فيديو", 140),
+                        "url": f"https://www.youtube.com/watch?v={vid}",
+                        "snippet": _short(entry.get("description") or "", 200),
+                        "thumbnail": f"https://i.ytimg.com/vi/{vid}/mqdefault.jpg",
+                        "duration_seconds": int(duration) if duration else None,
+                        "channel": _short(entry.get("channel") or entry.get("uploader") or "", 60),
+                        "lang": "ar",
+                    }
+                )
+                if len(results) >= limit:
+                    break
+            if results:
                 break
-    except Exception as e:  # noqa: BLE001
-        print(f"[Resources] YouTube فشل: {type(e).__name__}")
-        return []
+        except Exception as e:  # noqa: BLE001
+            print(f"[Resources] YouTube محاولة {attempt}/{len(clients)}: {type(e).__name__}")
+            continue
+
+    # لا نُخزّن نتيجة فاشلة في الكاش حتى تُعاد المحاولة في المرة القادمة
+    if results:
+        _cache_set(cache_key, results)
     return results
 
 
