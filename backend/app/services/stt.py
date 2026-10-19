@@ -75,6 +75,12 @@ class STTService:
 
     def transcribe_local(self, file_path: str, hint: str = "") -> Tuple[str, List[Dict]]:
         """تفريغ محلي عبر faster-whisper"""
+        if not settings.stt_enabled:
+            raise ValueError(
+                "هذا الخادم يعمل في وضع «النصوص فقط» ولا يدعم تفريغ الصوت "
+                "(الخطة المجانية في Render بلا ffmpeg/ذاكرة كافية). "
+                "ارفع PDF أو PPTX أو DOCX أو TXT، أو شغّل النسخة المحلية للحصول على التفريغ الصوتي."
+            )
         model = self._load_local_model()
         if model is None:
             # Fallback: رسالة واضحة للمستخدم

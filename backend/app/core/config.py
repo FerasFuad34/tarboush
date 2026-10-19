@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     storage_path: str = "./storage/uploads"
     export_path: str = "./storage/exports"
     
+    stt_enabled: bool = True  # False = نشر نصّي فقط (بلا صوت) كما في خطة Render المجانية
     stt_provider: str = "local_whisper"  # local_whisper | groq
     stt_model: str = "medium"
     whisper_model_dir: str = "./storage/models"

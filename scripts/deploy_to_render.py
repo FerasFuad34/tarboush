@@ -214,6 +214,7 @@ def main() -> None:
                 {"key": "RESOURCES_ENABLED", "value": "true"},
                 {"key": "RESOURCE_PROVIDERS", "value": "youtube,wikipedia,wikiversity,wikibooks,arxiv"},
                 {"key": "MAX_UPLOAD_SIZE_MB", "value": "25"},
+                {"key": "STT_ENABLED", "value": "false"},
                 {"key": "SECRET_KEY", "value": os.urandom(32).hex()},
                 {"key": "CORS_ORIGINS", "value": "http://localhost:5173"},
             ],

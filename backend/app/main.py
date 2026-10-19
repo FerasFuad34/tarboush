@@ -93,20 +93,30 @@ def health():
         }
 
     # faster-whisper
-    try:
-        import faster_whisper  # noqa: F401  (فحص توفر المكتبة فقط)
-        checks["stt"] = {"ok": True, "label": "محرك التفريغ جاهز", "detail": settings.stt_model}
-    except Exception:
-        checks["stt"] = {"ok": False, "label": "محرك التفريغ غير مثبت", "detail": "ثبّت faster-whisper"}
+    if not settings.stt_enabled:
+        checks["stt"] = {
+            "ok": True,
+            "label": "التفريغ الصوتي معطّل (وضع النصوص فقط)",
+            "detail": "STT_ENABLED=false — الملفات النصية وPDF/PPTX/DOCX تعمل بالكامل",
+        }
+    else:
+        try:
+            import faster_whisper  # noqa: F401  (فحص توفر المكتبة فقط)
+            checks["stt"] = {"ok": True, "label": "محرك التفريغ جاهز", "detail": settings.stt_model}
+        except Exception:
+            checks["stt"] = {"ok": False, "label": "محرك التفريغ غير مثبت", "detail": "ثبّت faster-whisper"}
 
     # ffmpeg (مطلوب لكل صوت/فيديو)
     import shutil
     has_ffmpeg = shutil.which("ffmpeg") is not None
-    checks["ffmpeg"] = {
-        "ok": has_ffmpeg,
-        "label": "ffmpeg جاهز" if has_ffmpeg else "ffmpeg غير مثبت",
-        "detail": "" if has_ffmpeg else "لازم لاستخراج الصوت من الفيديو وتنظيفه",
-    }
+    if not settings.stt_enabled:
+        checks["ffmpeg"] = {"ok": True, "label": "ffmpeg غير مطلوب (لا صوت)", "detail": ""}
+    else:
+        checks["ffmpeg"] = {
+            "ok": has_ffmpeg,
+            "label": "ffmpeg جاهز" if has_ffmpeg else "ffmpeg غير مثبت",
+            "detail": "" if has_ffmpeg else "لازم لاستخراج الصوت من الفيديو وتنظيفه",
+        }
 
     # مصادر الشرح الخارجية (اختيارية: تعطّلها لا يمنع المنصة من العمل)
     try:

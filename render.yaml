@@ -26,6 +26,8 @@ services:
         value: youtube,wikipedia,wikiversity,wikibooks,arxiv
       - key: MAX_UPLOAD_SIZE_MB
         value: "25"
+      - key: STT_ENABLED
+        value: "false"        # الخطة المجانية بلا ffmpeg/ذاكرة كافية للتفريغ الصوتي
       - key: CORS_ORIGINS
         sync: false          # ضع هنا رابط الواجهة بعد إنشائها
       - key: SECRET_KEY
