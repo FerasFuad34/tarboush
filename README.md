@@ -1,0 +1,206 @@
+# طربوش 🎓 — ذاكر محاضرتك بذكاء
+
+**منصة عربية RTL تحوّل محاضرتك (صوت / فيديو / PDF / PPTX / DOCX / رابط YouTube) إلى: نص كامل + 3 مستويات تلخيص + قاموس مصطلحات + 10 أسئلة مراجعة + **مواضيع مع شرح خارجي حقيقي من يوتيوب وويكيبيديا** + ملفات تصدير — كل ذلك يعمل محلياً وبلا تكلفة.**
+
+اعتمد الاسم والشعار: **طَربوش** — *Tarboush*، بشعار نصي `طَربوش 🎓` وأيقونة (طربوش أحمر + كتاب) مضمّنة كـ SVG في الواجهة.
+
+---
+
+## ✅ ما ينجزه M1 فعلياً (كل زر موصول بوظيفة حقيقية)
+
+| # | الميزة | الدليل |
+| :---: | :--- | :--- |
+| 1 | رفع صوت/فيديو (MP3, WAV, M4A, MP4, WebM) | فحص E2E ✅ + مشغل يعمل |
+| 2 | رفع PDF نصي و**PDF ممسوح (OCR عربي)** | ✅ 21 و16 كلمة مستخرجة فعلياً |
+| 3 | رفع PPTX / DOCX / TXT / MD | ✅ نص مرتب حسب الشرائح |
+| 4 | تسجيل مباشر من الميكروفون + رابط YouTube | ✅ عبر MediaRecorder وyt-dlp |
+| 5 | تفريغ عربي بطوابع زمنية (faster-whisper) | ✅ WER 11.67% على عيّنة مرجعية |
+| 6 | 3 مستويات تلخيص + أهم 10 أفكار | ✅ مع Ollama توليدي، وبدونه استخراجي |
+| 7 | قاموس مصطلحات عربي/إنجليزي من سياق المحاضرة | ✅ 8 مصطلحات |
+| 8 | 10 أسئلة MCQ مع شرح واقتباس + تصحيح ودرجة | ✅ |
+| 9 | مشغل بسرعة 0.75×–2.5× والنقر على المقطع للانتقال | ✅ مفحوص آلياً في المتصفح |
+| 10 | تصدير PDF عربي (خط مضمّن) / DOCX / MD / JSON / TXT | ✅ 5 صيغ |
+| 11 | منع التكرار بالـ hash + رسائل خطأ عربية + إعادة محاولة | ✅ |
+| 12 | طابور حقيقي (Celery+Redis) وتقدّم حي % | ✅ |
+| 13 | PWA (manifest + service worker) وواجهة RTL | ✅ |
+| 14 | **تقسيم المحاضرة إلى مواضيع تلقائياً** (بلا أي مادة محددة مسبقاً) | ✅ 3 مواضيع في الفيزياء و3 مختلفة في الاقتصاد بنفس الكود |
+| 15 | **ربط كل موضوع بشرح خارجي حقيقي** (يوتيوب/ويكيبيديا/ويكي الجامعة/ويكي الكتب/arXiv) | ✅ 12 مصدراً حقيقياً لمحاضرة الفيزياء، 11 للاقتصاد — بلا تكرار |
+| 16 | **مشغّل مضمّن + بحث حر + زر تحديث المصادر** داخل تبويب «الشرح والمصادر» | ✅ مفحوص آلياً في المتصفح |
+
+**التقرير الكامل بالنتائج الرقمية:** [`docs/M1_STATUS.md`](docs/M1_STATUS.md)
+**ميزة الشرح والمصادر (التصميم + القيود + نتائج الاختبار):** [`docs/SOURCES_FEATURE.md`](docs/SOURCES_FEATURE.md)
+**لقطات الشاشة:** [`docs/screenshots/`](docs/screenshots/)
+
+---
+
+## 🚀 التشغيل على ويندوز — خطوة بخطوة
+
+### المتطلبات
+1. **Docker Desktop for Windows** — https://www.docker.com/products/docker-desktop (شغّله وتأكد أن الأيقونة خضراء).
+2. **Ollama** (اختياري لكنه يرفع جودة التلخيص كثيراً) — https://ollama.com ثم:
+   ```powershell
+   ollama pull qwen2.5:7b
+   ```
+   بدونه تعمل المنصة بتلخيص استخراجي حرفي من المحاضرة (لا ينهار شيء).
+
+### 1) نسخ المشروع والإعداد
+```powershell
+cd path\to\project
+copy .env.example .env
+```
+افتح `.env` وعدّل إن أردت:
+- `STT_MODEL=medium` (افتراضي) — للسرعة استخدم `small`، وللدقة الأفضل `large-v3`.
+- `OLLAMA_BASE_URL=http://host.docker.internal:11434` (القيمة الافتراضية صحيحة لويندوز).
+- `LLM_PROVIDER=ollama`.
+
+### 2) التشغيل بأمر واحد
+```powershell
+docker-compose up --build
+```
+انتظر انتهاء بناء الصور (أول مرة فقط، عدة دقائق).
+
+### 3) افتح المتصفح
+| الخدمة | الرابط |
+| :--- | :--- |
+| الواجهة | http://localhost:3000 |
+| توثيق API (Swagger) | http://localhost:8000/docs |
+| مراقبة الطابور (Flower) | http://localhost:5555 |
+
+### 4) أول محاضرة (تجربة كاملة)
+1. اضغط **رفع محاضرة** → اختر ملفاً (صوت 30 دقيقة أو PDF عربي).
+2. ستظهر البطاقة بحالة «جاري التفريغ...» مع نسبة مئوية تتحدث كل ثانيتين.
+3. عند «مكتملة» افتحها: النص + الملخصات + القاموس + الاختبار.
+4. تبويب **تصدير ومشاركة** → نزّل PDF / Word / Markdown / JSON.
+5. ارفع نفس الملف مرة أخرى → ستأتيك رسالة «تم رفعه مسبقاً» (منع التكرار).
+
+### إيقاف/تنظيف
+```powershell
+docker-compose down          # إيقاف
+docker-compose down -v       # إيقاف + حذف data Redis
+```
+
+---
+
+## 🧪 تشغيل الاختبارات بنفسك
+
+```powershell
+# 1) فحص شامل على خادم يعمل (23 فحصاً)
+cd backend
+pip install -r requirements.txt httpx
+python tests/e2e_check.py http://localhost:8000
+
+# 2) قياس دقة التفريغ (WER)
+python tests/wer_tool.py reference.txt hypothesis.txt
+```
+ملفات الاختبار المستخدمة (نص/صوت/PDF ممسوح/PPTX/DOCX) تُنشأ كما هو موضح في `docs/M1_STATUS.md` §3–§4.
+
+---
+
+## 🧱 المعمارية
+
+```
+المتصفح (React RTL/PWA)
+      │  /api  (نسبي — لا مفاتيح في الواجهة)
+      ▼
+FastAPI (رفع، حالة، تصدير، بث وسائط Range)
+      │  enqueue
+      ▼
+Celery Worker ──► ffmpeg ──► faster-whisper ──► Ollama ──► SQLite
+      │              (صوت)     (تفريغ)        (تلخيص/أسئلة)   (نتائج)
+      └── Redis (وسيط الطابور) + Flower (مراقبة)
+```
+
+- **بدون Redis** → يعمل النظام تلقائياً بخيط خلفي (مفحوص).
+- **بدون Ollama** → بدائل استخراجية محلية (مفحوص).
+- **بدون إنترنت** بعد التحميل الأول للنماذج → كل شيء محلي.
+
+### بنية المجلدات
+```
+tarboush/
+├─ docker-compose.yml          # 5 خدمات: redis, backend, worker, flower, frontend
+├─ .env.example                # كل المتغيرات مشروحة
+├─ backend/
+│  ├─ app/
+│  │  ├─ main.py               # FastAPI + /health + معالجة الأخطاء
+│  │  ├─ core/{config,database}.py
+│  │  ├─ models/lecture.py     # User, Lecture, Job, Transcript, Summary, GlossaryItem, Quiz
+│  │  ├─ api/v1/lectures.py    # رفع/قائمة/تفاصيل/تقدم/إعادة/حذف/بث/تصدير/يوتيوب
+│  │  ├─ services/
+│  │  │  ├─ pipeline.py        # خط المعالجة الموحد (بدون اعتماد على Celery)
+│  │  │  ├─ stt.py             # faster-whisper + OCR + قراءة المستندات
+│  │  │  ├─ llm.py             # Ollama/Groq + بدائل استخراجية محلية
+│  │  │  └─ export.py          # PDF عربي (bidi/reshaping) + DOCX RTL + MD/JSON
+│  │  └─ workers/{celery_app,tasks}.py
+│  ├─ fonts/                   # Noto Naskh Arabic (OFL) مضمّن
+│  ├─ tests/{e2e_check.py,wer_tool.py}
+│  └─ requirements.txt
+├─ frontend/
+│  ├─ src/pages/{Home,Upload,Lecture}.tsx
+│  ├─ src/api/client.ts
+│  ├─ public/{manifest.webmanifest,sw.js,icon.svg}
+│  └─ nginx.conf               # يخدم React ويوكّل /api و /health
+├─ storage/{uploads,exports}
+└─ docs/{M1_STATUS.md, screenshots/}
+```
+
+---
+
+## ⚙️ متغيرات البيئة (`.env`)
+
+| المتغير | الافتراضي | لماذا يهم |
+| :--- | :--- | :--- |
+| `DATABASE_URL` | `sqlite:///./storage/tarboush.db` | SQLite كما طلبت — بلا خدمة منفصلة |
+| `REDIS_URL` | `redis://redis:6379/0` | وسيط الطابور (داخل Docker) |
+| `STT_PROVIDER` | `local_whisper` | أو `groq` (طبقة مجانية سريعة) |
+| `STT_MODEL` | `medium` | `tiny/base/small/medium/large-v3` |
+| `WHISPER_MODEL_DIR` | `./storage/models` | مكان تحميل النماذج |
+| `GROQ_API_KEY` | فارغ | فقط إن اخترت `groq` — https://console.groq.com/keys |
+| `LLM_PROVIDER` | `ollama` | أو `groq` / `openai` |
+| `OLLAMA_BASE_URL` | `http://host.docker.internal:11434` | عنوان Ollama من داخل الحاوية (ويندوز) |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | ممتاز للعربية |
+| `MAX_UPLOAD_SIZE_MB` | `500` | حد الرفع |
+| `ENABLE_DEDUPLICATION` | `true` | منع معالجة نفس الملف مرتين |
+
+> **الأمان:** لا مفاتيح في الواجهة إطلاقاً؛ كل الاستدعاءات تمر عبر الباك-إند، والملفات تُخزّن في `./storage` على جهازك فقط.
+
+---
+
+## 🛣️ خارطة الطريق
+
+| المرحلة | المحتوى | الحالة |
+| :--- | :--- | :---: |
+| **M1** | رفع + تفريغ + 3 تلخيصات + قاموس + 10 MCQ + تصدير + RTL + طابور | ✅ منجز ومُختبر |
+| M2 | RAG Chat باستشهاد الدقيقة، تقسيم مواضيع، شرح مبسّط/عميق، خريطة ذهنية، Anki، توقعات الامتحان | ⬜ |
+| M3 | فيديو/شرائح متزامنة، OCR سبورة + LaTeX، فصل متحدثين، TTS، رفع مستأنف، معالجة 3 ساعات متوازية | ⬜ |
+| M4 | حسابات ومجموعات دراسة، رابط مشاركة عام/بكلمة مرور، وصولية WCAG، بيانات منخفضة | ⬜ |
+| M5 | نشر VPS/Docker، مراقبة، تحسين تكلفة، توثيق مصوّر | ⬜ |
+
+تفاصيل ما هو خارج النطاق وتقديرات الجهد في [`ROADMAP.md`](ROADMAP.md).
+
+---
+
+## ❓ أسئلة شائعة
+
+**هل يحتاج إنترنت؟** أول تشغيل فقط لتحميل نماذج Whisper (مرة واحدة). بعدها محلي بالكامل.
+**هل يصلح لجهاز ضعيف؟** نعم — استخدم `STT_MODEL=small`؛ وإذا أردت أقصى دقة على جهاز قوي: `medium` أو `large-v3`.
+**لماذا الملخص «جمل حرفية» أحياناً؟** لأن Ollama غير مُشغَّل. شغّله والتلخيص يصبح توليدياً. الواجهة تُظهر ذلك في بطاقة «حالة النظام».
+**كيف أرفع الدقة للهجة اليمنية؟** عنوان المحاضرة يُمرَّر كتلميح مصطلحات تلقائياً (خفّض WER من 21.7% إلى 11.7%)؛ التصحيح اللاحق بـ LLM في M2.
+
+## 📄 الترخيص
+MIT — للطلاب في اليمن والعالم العربي.
+
+---
+
+## 🎬 ملفات تجربة جاهزة (داخل `docs/samples/`)
+
+| الملف | الاستخدام |
+| :--- | :--- |
+| `lecture_physics_ar.txt` | محاضرة فيزياء نصية عربية — أسرع تجربة (ثوانٍ) |
+| `lecture_physics_ar_45s.mp3` | تسجيل عربي 45 ثانية لاختبار التفريغ والمشغل والطوابع الزمنية |
+| `lecture_physics_ar_45s_reference.txt` | النص المرجعي لنفس التسجيل — لحساب WER |
+
+**طريقة حساب WER بنفسك:**
+```bash
+python -c "from app.services.stt import STTService; s=STTService(); print(s.transcribe('docs/samples/lecture_physics_ar_45s.mp3')[0])" > hyp.txt
+python backend/tests/wer_tool.py docs/samples/lecture_physics_ar_45s_reference.txt hyp.txt
+```

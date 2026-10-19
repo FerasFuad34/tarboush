@@ -1,0 +1,24 @@
+# بايثون
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# بيانات وقت التشغيل (لا تُرفع: تُنشأ عند التشغيل)
+storage/
+!storage/.gitkeep
+*.db
+*.db-journal
+*.log
+
+# الواجهة
+node_modules/
+frontend/dist/
+dist/
+.vite/
+
+# أسرار
+.env
+.env.local
+*.pem

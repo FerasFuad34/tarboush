@@ -1,0 +1,14 @@
+{
+  "name": "طربوش - ذاكر محاضرتك بذكاء",
+  "short_name": "طربوش",
+  "description": "حوّل محاضراتك الصوتية والملفات إلى ملخصات وأسئلة مراجعة",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fffaf0",
+  "theme_color": "#7f1d1d",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

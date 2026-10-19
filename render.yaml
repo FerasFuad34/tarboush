@@ -1,0 +1,46 @@
+# نشر طربوش على Render — خدمتان: API بايثون + واجهة ثابتة
+# الاستخدام: أنشئ Blueprint من لوحة Render واختر هذا المستودع.
+services:
+  - type: web
+    name: tarboush-api
+    runtime: python
+    plan: free
+    region: frankfurt
+    rootDir: backend
+    buildCommand: pip install --upgrade pip && pip install -r requirements-render.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.6
+      - key: DATABASE_URL
+        value: sqlite:///./storage/tarboush.db
+      - key: STORAGE_PATH
+        value: ./storage/uploads
+      - key: EXPORT_PATH
+        value: ./storage/exports
+      - key: RESOURCES_ENABLED
+        value: "true"
+      - key: RESOURCE_PROVIDERS
+        value: youtube,wikipedia,wikiversity,wikibooks,arxiv
+      - key: MAX_UPLOAD_SIZE_MB
+        value: "25"
+      - key: CORS_ORIGINS
+        sync: false          # ضع هنا رابط الواجهة بعد إنشائها
+      - key: SECRET_KEY
+        generateValue: true
+
+  - type: web
+    name: tarboush-web
+    runtime: static
+    plan: free
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false          # ضع هنا رابط الـ API (https://tarboush-api.onrender.com)
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

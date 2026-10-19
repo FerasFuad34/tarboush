@@ -1,0 +1,41 @@
+# === الويب ===
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+python-multipart==0.0.9
+pydantic==2.6.1
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# === قاعدة البيانات ===
+sqlalchemy==2.0.27
+
+# === الطابور ===
+celery==5.3.6
+redis==5.0.1
+flower==2.0.1
+
+# === التفريغ الصوتي (مجاني محلي) ===
+faster-whisper==1.0.1
+numpy==1.26.4
+av==12.1.0
+
+# === قراءة المستندات ===
+pymupdf==1.23.26
+PyPDF2==3.0.1
+python-docx==1.1.2
+python-pptx==0.6.23
+
+# === OCR للـ PDF الممسوح (يحتاج tesseract-ocr-ara في النظام) ===
+pytesseract==0.3.10
+Pillow==10.2.0
+
+# === التصدير (PDF عربي) ===
+reportlab==4.1.0
+arabic-reshaper==3.0.0
+python-bidi==0.4.2
+
+# === مزودون خارجيون (اختياريون، لا يعملون بدون مفاتيحهم) ===
+httpx==0.26.0
+groq==0.4.2
+# yt-dlp يتغيّر مع تغيّر يوتيوب — نتركه بحد أدنى بدل تثبيت نسخة قديمة تنكسر
+yt-dlp>=2025.1.1
