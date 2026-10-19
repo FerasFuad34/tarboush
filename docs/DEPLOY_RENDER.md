@@ -105,3 +105,4 @@ python scripts/deploy_to_render.py --repo tarboush --public
 | الواجهة تفتح لكن كل الطلبات تفشل | `VITE_API_URL` غير مضبوط وقت البناء | اضبطه ثم أعد النشر مع `Clear build cache` |
 | `CORS error` في المتصفح | `CORS_ORIGINS` لا يحتوي رابط الواجهة | أضف الرابط ثم أعد تشغيل خدمة الـ API |
 | بناء الواجهة يفشل | `npm ci` يحتاج `package-lock.json` | السكربت يستخدم `npm install` لهذا السبب |
+
