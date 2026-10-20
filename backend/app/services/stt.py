@@ -161,7 +161,8 @@ class STTService:
 
         detected_lang = {"code": lang}
 
-        def run(audio_input, offset: float):
+        def run(audio_input, offset: float, chunk_len: float = 0.0, part_no: int = 1,
+                parts_total: int = 1):
             segs, info = model.transcribe(
                 audio_input,
                 language=detected_lang["code"],
@@ -173,7 +174,15 @@ class STTService:
                 word_timestamps=False,
             )
             out = []
+            next_mark = 0.0
             for seg in segs:
+                # تقدّم داخل الجزء نفسه: شريط لا يتجمد في محاضرة 15 دقيقة
+                if on_progress and chunk_len > 0:
+                    frac = min(0.99, (seg.end or 0) / chunk_len)
+                    overall = (part_no - 1 + frac) / max(1, parts_total)
+                    if overall - next_mark >= 0.03:
+                        next_mark = overall
+                        on_progress(f"__pct__{int(overall * 100)}")
                 text = seg.text.strip()
                 if text and text[-1] not in ".!?:؟،":
                     text += "."
@@ -197,7 +206,9 @@ class STTService:
                     mins = int(total // 60)
                     on_progress(f"تفريغ الجزء {i + 1}/{len(pieces)} من أصل {mins} دقيقة")
                 arr = self._read_wav_mono16k(piece)
-                part, info = run(piece if arr is None else arr, offset=i * chunk_seconds)
+                part, info = run(piece if arr is None else arr, offset=i * chunk_seconds,
+                                 chunk_len=self._duration(piece), part_no=i + 1,
+                                 parts_total=len(pieces))
                 detected = detected or getattr(info, "language", None)
                 segments_list.extend(part)
          else:

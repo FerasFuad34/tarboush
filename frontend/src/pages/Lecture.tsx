@@ -55,7 +55,7 @@ export default function Lecture(){
   }
 
   const [speed,setSpeed] = useState(1)
-  const audioPlayer = useRef<HTMLAudioElement|null>(null)
+  const audioPlayer = useRef<HTMLMediaElement|null>(null)
 
   /** تنسيق الثواني إلى mm:ss */
   const fmt = (sec:number)=>{
@@ -126,13 +126,24 @@ export default function Lecture(){
         <div className="bg-white rounded-xl p-4 shadow border sticky top-[64px] z-40">
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-sm font-bold text-[#7f1d1d]">مشغل المحاضرة</span>
-            <audio
-              ref={audioPlayer}
-              controls
-              preload="metadata"
-              className="flex-1 min-w-[240px]"
-              src={`${api.defaults.baseURL}/api/v1/lectures/${id}/media`}
-            />
+            {(data as any).is_video ? (
+              <video
+                ref={audioPlayer as any}
+                controls
+                preload="metadata"
+                playsInline
+                className="flex-1 min-w-[240px] max-h-[320px] rounded-lg bg-black"
+                src={`${api.defaults.baseURL}/api/v1/lectures/${id}/media`}
+              />
+            ) : (
+              <audio
+                ref={audioPlayer as any}
+                controls
+                preload="metadata"
+                className="flex-1 min-w-[240px]"
+                src={`${api.defaults.baseURL}/api/v1/lectures/${id}/media`}
+              />
+            )}
             <div className="flex items-center gap-1">
               <span className="text-xs text-slate-500">السرعة</span>
               {[0.75,1,1.25,1.5,2,2.5].map(v=>(

@@ -5,6 +5,7 @@ import os
 import re
 import uuid
 import shutil
+import mimetypes
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -16,6 +17,16 @@ from app.utils.hash import calculate_file_hash
 from app.services.export import export_markdown, export_json, export_pdf, export_docx
 
 router = APIRouter(prefix="/lectures", tags=["lectures"])
+
+def _looks_video(path: str) -> bool:
+    """هل للملف مسار صورة متحركة؟ (لعرض <video> بدل <audio>)."""
+    try:
+        from app.services.ingest import probe_media, media_summary
+        info = probe_media(path)
+        return bool(info and media_summary(info)["has_video"])
+    except Exception:
+        return False
+
 
 def _looks_media(path: str) -> bool:
     """هل الملف وسائط؟ نسأل المحتوى (ffprobe) لا الامتداد."""
@@ -453,6 +464,7 @@ def get_lecture(lecture_id: int, db: Session = Depends(get_db)):
         "created_at": lecture.created_at.isoformat() if lecture.created_at else None,
         "mime_type": lecture.mime_type,
         "is_media": _looks_media(lecture.file_path or ""),
+        "is_video": _looks_video(lecture.file_path or ""),
         "transcript": {
             "text": transcript.full_text if transcript else None,
             "segments": transcript.segments if transcript else [],
@@ -517,18 +529,22 @@ def stream_media(lecture_id: int, db: Session = Depends(get_db)):
     lecture = db.query(Lecture).filter(Lecture.id == lecture_id).first()
     if not lecture:
         raise HTTPException(status_code=404, detail="المحاضرة غير موجودة")
-    ext = os.path.splitext(lecture.file_path or "")[1].lower()
-    media_types = {
-        ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4",
-        ".aac": "audio/aac", ".ogg": "audio/ogg", ".flac": "audio/flac",
-        ".webm": "audio/webm", ".mp4": "video/mp4", ".mov": "video/quicktime",
-        ".avi": "video/x-msvideo",
-    }
-    if ext not in media_types:
-        raise HTTPException(status_code=400, detail="هذا الملف نصي وليس صوتاً أو فيديو، لا يمكن تشغيله في المشغل")
     if not lecture.file_path or not os.path.exists(lecture.file_path):
         raise HTTPException(status_code=404, detail="ملف المحاضرة غير موجود على القرص")
-    return FileResponse(lecture.file_path, media_type=media_types[ext])
+
+    # النوع الحقيقي من ffprobe — يدعم أي حاوية (mkv/avi/ts/flv…) حتى لو كان الامتداد غريباً
+    from app.services.ingest import probe_media, media_summary
+    info = probe_media(lecture.file_path)
+    if not info:
+        raise HTTPException(status_code=400, detail="هذا الملف ليس صوتاً أو فيديو، لا يمكن تشغيله في المشغل")
+    meta = media_summary(info)
+    if not meta["has_audio"] and not meta["has_video"]:
+        raise HTTPException(status_code=400, detail="لا يوجد مسار صوتي أو مرئي في الملف")
+
+    mime, _ = mimetypes.guess_type(lecture.file_path)
+    if not mime or not (mime.startswith("audio") or mime.startswith("video")):
+        mime = "video/mp4" if meta["has_video"] else "audio/mpeg"
+    return FileResponse(lecture.file_path, media_type=mime)
 
 
 # === التصدير ===

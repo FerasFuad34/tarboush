@@ -74,6 +74,14 @@ def run_pipeline(lecture_id: int, on_progress=None) -> dict:
         def on_stage(msg: str):
             # تقدّم ديناميكي: 8% → 40% حسب مراحل الاستخراج/التفريغ
             stage["last"] = msg
+            if msg.startswith("__pct__"):
+                # نسبة داخل الجزء الحالي (من stt) → نطاق 8..40
+                try:
+                    frac = int(msg.split("__pct__")[1]) / 100
+                    progress("transcribing", 8 + int(32 * min(1.0, frac)))
+                except Exception:
+                    pass
+                return
             if "الجزء" in msg:
                 m = __import__("re").search(r"الجزء (\d+)/(\d+)", msg)
                 if m:
