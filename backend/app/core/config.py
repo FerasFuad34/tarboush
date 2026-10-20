@@ -38,8 +38,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     
     whisper_beam_size: int = 5
-    # "auto" = يكتشف اللغة من الصوت. لا نفرض العربية: أي تخصص وأي لغة يعمل.
-    stt_language: str = "auto"
+    # اللغة الافتراضية العربية (محاضرات عربية). للغات الأخرى: STT_LANGUAGE=auto
+    # أو حدّد الرمز مباشرة (en, fr, tr...).
+    stt_language: str = "ar"
     whisper_language: str = "ar"
     enable_deduplication: bool = True
 

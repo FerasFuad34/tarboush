@@ -155,7 +155,7 @@ class STTService:
             else settings.stt_language
 
         chunk_seconds = max(60, int(settings.audio_chunk_seconds or 900))
-        pieces = self._split_wav(audio_path, chunk_seconds) if total > chunk_seconds * 1.2 else []
+        pieces = self._split_wav(audio_path, chunk_seconds) if total > chunk_seconds else []
         chunk_dir = os.path.dirname(pieces[0]) if pieces else None
         derived = audio_path if audio_path != file_path else None
 
@@ -214,7 +214,15 @@ class STTService:
          else:
             if on_progress and total:
                 on_progress(f"تفريغ {int(total // 60)} دقيقة صوت")
-            part, info = run(audio_path, 0.0)
+            # نمرّر مصفوفة numpy دائماً: faster-whisper يمرّر المسار إلى
+            # av.open(metadata_errors=...) وهذا المُعامل محذوف في av الحديث (>=16)
+            # فيرمي TypeError. المصفوفة تتخطى av.decode_audio تماماً.
+            arr = self._read_wav_mono16k(audio_path)
+            if arr is None:
+                raise ValueError(
+                    "تعذّر قراءة الصوت بعد تحويله إلى WAV. تأكد أن ffmpeg يعمل: ffmpeg -version"
+                )
+            part, info = run(arr, 0.0)
             detected = getattr(info, "language", None)
             segments_list = part
         finally:

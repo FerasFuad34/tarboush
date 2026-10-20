@@ -1,13 +1,13 @@
 # === الويب ===
-fastapi==0.110.0
+fastapi>=0.115.0
 uvicorn[standard]==0.27.1
 python-multipart==0.0.9
-pydantic==2.6.1
-pydantic-settings==2.1.0
+pydantic>=2.9.0
+pydantic-settings>=2.4.0
 python-dotenv==1.0.0
 
 # === قاعدة البيانات ===
-sqlalchemy==2.0.27
+sqlalchemy>=2.0.36
 
 # === الطابور ===
 celery==5.3.6
@@ -15,12 +15,14 @@ redis==5.0.1
 flower==2.0.1
 
 # === التفريغ الصوتي (مجاني محلي) ===
-faster-whisper==1.0.1
-numpy==1.26.4
-av==12.1.0
+# ملاحظة مهمة: av القديم (12.x) بلا حزم جاهزة لويندوز/بايثون 3.12+ فيفشل التثبيت.
+# نستخدم إصدارات حديثة لها wheels جاهزة لكل الأنظمة.
+faster-whisper>=1.1.0
+numpy>=1.26,<3
+av>=13.0.0
 
 # === قراءة المستندات ===
-pymupdf==1.23.26
+pymupdf>=1.24.0
 PyPDF2==3.0.1
 python-docx==1.1.2
 python-pptx==0.6.23
@@ -30,7 +32,7 @@ openpyxl==3.1.2
 # ffmpeg + ffprobe (برنامج نظام) = بوابة كل صيغ الصوت والفيديو
 # tesseract-ocr + tesseract-ocr-ara = OCR للصور والـ PDF الممسوح
 pytesseract==0.3.10
-Pillow==10.2.0
+Pillow>=10.4.0
 
 # === التصدير (PDF عربي) ===
 reportlab==4.1.0

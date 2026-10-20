@@ -10,7 +10,7 @@ python-multipart==0.0.9
 pydantic==2.6.1
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
-sqlalchemy==2.0.27
+sqlalchemy>=2.0.36
 
 # قراءة المستندات
 pymupdf>=1.24.0
@@ -18,7 +18,7 @@ PyPDF2==3.0.1
 python-docx==1.1.2
 python-pptx==0.6.23
 openpyxl==3.1.2          # قراءة Excel (سطح المكتب والمتصفح)
-Pillow==10.4.0           # معالجة الصور (OCR يحتاج tesseract خارجياً)
+Pillow>=10.4.0           # معالجة الصور (OCR يحتاج tesseract خارجياً)
 
 # التصدير العربي
 reportlab==4.1.0
