@@ -207,6 +207,13 @@ export default function Upload(){
       {msg && <div className="bg-green-50 border border-green-200 text-green-800 rounded-xl p-3 text-sm">{msg}</div>}
       {error && <div className="bg-red-50 border border-red-200 text-red-800 rounded-xl p-3 text-sm">❌ {error}</div>}
 
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700">
+        <b>ملاحظة صادقة عن هذه النسخة:</b> النسخة السحابية المجانية تقبل <b>أي مستند أو ملف نصي</b>
+        {' '}(PDF, Word, PowerPoint, Excel, PDF ممسوح نصياً، أي كود…) بلا سقف حجم —
+        لكنها <b>لا تُفرّغ الصوت والفيديو</b> ولا تقرأ الصور بـ OCR، لأن الخطة المجانية بلا ffmpeg/Tesseract وذاكرتها لا تحمل Whisper.
+        للتفريغ الكامل شغّل النسخة المحلية: <span className="font-mono text-xs bg-white px-1 rounded">start-windows.bat</span>.
+      </div>
+
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm">
         <b>المعالجة:</b> تفريغ كامل ← فقرات ومواضيع ← ملخصات ← قاموس مصطلحات ← أسئلة ← مصادر لكل موضوع.
         الملفات الكبيرة تُرفع على قطع وتُستأنف تلقائياً عند انقطاع الشبكة.
