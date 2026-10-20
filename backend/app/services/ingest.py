@@ -346,6 +346,11 @@ def ocr_image(path: str) -> str:
         raise ValueError(
             "قراءة الصور تحتاج pytesseract + حزمة Pillow، وبرنامج Tesseract مثبَّتاً في النظام."
         )
+    if not shutil.which("tesseract"):
+        raise ValueError(
+            "قراءة الصور (OCR) تحتاج برنامج Tesseract — وهو غير مثبَّت على هذا الخادم. "
+            "النسخة المحلية تدعمها بالكامل: ثبّت tesseract-ocr و tesseract-ocr-ara."
+        )
     try:
         img = Image.open(path)
         if img.mode not in ("RGB", "L"):
@@ -561,6 +566,16 @@ def extract(path: str, hint: str = "", on_progress: Progress = None,
             raw = _html_to_text(raw)
         if _printable_ratio(raw) > 0.75 and len(raw.strip()) > 30:
             return raw.strip(), segments_from_text(raw)
+
+    if magic in {"media", "riff"} or ext in {
+        ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".flac", ".mp4",
+        ".mkv", ".mov", ".avi", ".webm", ".wmv", ".flv", ".3gp",
+    }:
+        raise ValueError(
+            "هذا ملف صوت/فيديو، لكن تفريغ الصوت غير متاح على هذا الخادم "
+            "(لا يوجد ffmpeg/Whisper في الخطة السحابية المجانية). "
+            "شغّل النسخة المحلية (start-windows.bat) لتفريغ المحاضرات الصوتية والمرئية بالكامل."
+        )
 
     raise ValueError(
         f"تعذر فهم محتوى الملف «{os.path.basename(path)}». "
