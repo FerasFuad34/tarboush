@@ -8,12 +8,12 @@ from app.core.database import SessionLocal
 from app.core.config import settings
 from app.models.lecture import Lecture, Job, Transcript, Summary, GlossaryItem, Quiz, Topic, TopicResource
 from app.services.stt import stt_service
+from app.services.ingest import extract as extract_any
 from app.services.llm import llm_service
 from app.services.topics import extract_topics
 from app.services.resources import link_topics
 
-AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".mp4", ".aac", ".ogg", ".flac", ".webm", ".mov", ".avi"}
-TEXT_EXTS = {".pdf", ".docx", ".txt", ".md", ".pptx"}
+# لا قوائم صيغ: كل ملف يُفحص من محتواه الحقيقي (انظر services/ingest.py)
 
 
 def _update(lecture, db, status: str, progress: int, error: str | None = None):
@@ -26,21 +26,14 @@ def _update(lecture, db, status: str, progress: int, error: str | None = None):
     print(f"[Pipeline {lecture.id}] {status} - {progress}%")
 
 
-def extract_text(file_path: str, hint: str = "") -> tuple[str, list]:
+def extract_text(file_path: str, hint: str = "", on_progress=None) -> tuple[str, list]:
     """
-    استخراج النص من أي ملف: صوت/فيديو عبر STT، أو مستند مباشرة.
-    hint: عنوان المحاضرة يُمرَّر لمحرك التفريغ كتلميح مصطلحات.
+    استخراج النص من أي ملف — بأي صيغة.
+    القرار من محتوى الملف لا من امتداده: فيديو/صوت (أي حاوية) → تفريغ،
+    مستند بأي صيغة → استخراج، صورة → OCR، أرشيف → فكّ ثم معالجة.
+    on_progress: دالة نصية لتحديث شريط التقدم أثناء العمل الطويل.
     """
-    ext = os.path.splitext(file_path)[1].lower()
-    if ext in TEXT_EXTS:
-        return stt_service.transcribe_text_file(file_path)
-    if ext in AUDIO_EXTS:
-        return stt_service.transcribe(file_path, hint=hint)
-    # محاولة صوت أولاً ثم مستند
-    try:
-        return stt_service.transcribe(file_path, hint=hint)
-    except Exception:
-        return stt_service.transcribe_text_file(file_path)
+    return extract_any(file_path, hint=hint, on_progress=on_progress)
 
 
 def run_pipeline(lecture_id: int, on_progress=None) -> dict:
@@ -74,10 +67,29 @@ def run_pipeline(lecture_id: int, on_progress=None) -> dict:
         db.commit()
 
         # 1) التفريغ / استخراج النص
-        progress("transcribing", 10)
-        full_text, segments = extract_text(lecture.file_path, hint=lecture.title or "")
+        progress("transcribing", 8)
+
+        stage = {"last": "بدء التحليل"}
+
+        def on_stage(msg: str):
+            # تقدّم ديناميكي: 8% → 40% حسب مراحل الاستخراج/التفريغ
+            stage["last"] = msg
+            if "الجزء" in msg:
+                m = __import__("re").search(r"الجزء (\d+)/(\d+)", msg)
+                if m:
+                    done, total_ = int(m.group(1)), int(m.group(2))
+                    progress("transcribing", 8 + int(32 * done / max(1, total_)))
+                    return
+            progress("transcribing", min(38, lecture.progress + 2))
+
+        full_text, segments = extract_text(
+            lecture.file_path, hint=lecture.title or "", on_progress=on_stage
+        )
         if not full_text or len(full_text.strip()) < 10:
-            raise ValueError("النص المستخرج فارغ أو قصير جداً. تأكد أن الملف يحتوي على كلام واضح أو نص قابل للقراءة.")
+            raise ValueError(
+                "المحتوى المستخرج فارغ أو قصير جداً. "
+                "تأكد أن الملف يحتوي كلاماً مسموعاً أو نصاً مقروءاً (وليس صامتاً أو صوراً بلا نص)."
+            )
 
         transcript = Transcript(
             lecture_id=lecture.id,

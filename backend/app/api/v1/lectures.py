@@ -2,7 +2,9 @@
 API المحاضرات - كل الوظائف الحقيقية
 """
 import os
+import re
 import uuid
+import shutil
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
@@ -14,6 +16,16 @@ from app.utils.hash import calculate_file_hash
 from app.services.export import export_markdown, export_json, export_pdf, export_docx
 
 router = APIRouter(prefix="/lectures", tags=["lectures"])
+
+def _looks_media(path: str) -> bool:
+    """هل الملف وسائط؟ نسأل المحتوى (ffprobe) لا الامتداد."""
+    try:
+        from app.services.ingest import probe_media, media_summary
+        info = probe_media(path)
+        return bool(info and media_summary(info)["has_audio"])
+    except Exception:
+        return False
+
 
 def get_or_create_user(db: Session):
     """مستخدم افتراضي للـ M1 (بدون مصادقة) - سيُستبدل ب JWT في M4"""
@@ -194,6 +206,37 @@ def create_demo_lecture(db: Session = Depends(get_db)):
             "message": "المحاضرة التجريبية قيد المعالجة — ستظهر المواضيع والمصادر خلال ثوانٍ"}
 
 
+def _safe_filename(name: str) -> str:
+    """اسم آمن للقرص مع الحفاظ على امتداد الملف (أي امتداد)."""
+    base = os.path.basename(name or "lecture")
+    base = re.sub(r"[\\/\x00]", "_", base)[:180] or "lecture"
+    return base
+
+
+async def _stream_to_disk(file: UploadFile, dest: str) -> int:
+    """
+    يكتب الملف على القرص كقطع صغيرة (1MB) — لا يقرأه كاملاً في الذاكرة.
+    محاضرة ساعة فيديو (1–3GB) تُرفع بلا انفجار ذاكرة.
+    """
+    size = 0
+    with open(dest, "wb") as f:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if settings.max_upload_size_mb > 0 and size > settings.max_upload_size_mb * 1024 * 1024:
+                f.close()
+                os.remove(dest)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"الملف أكبر من الحد المضبوط ({settings.max_upload_size_mb}MB). "
+                           "اجعل MAX_UPLOAD_SIZE_MB=0 لرفع أي حجم."
+                )
+            f.write(chunk)
+    return size
+
+
 @router.post("/upload")
 async def upload_lecture(
     file: UploadFile = File(...),
@@ -201,49 +244,42 @@ async def upload_lecture(
     db: Session = Depends(get_db)
 ):
     """
-    رفع محاضرة - يدعم: صوت/فيديو/PDF/DOCX/TXT/PPTX
-    مع منع التكرار بالـ hash + Queue حقيقي
+    رفع محاضرة بأي صيغة: صوت، فيديو، PDF، Word، PowerPoint، Excel، صور، أرشيف…
+    النوع يُحدَّد من محتوى الملف لا من امتداده. بلا سقف حجم افتراضياً (0 = بلا حد).
     """
-    # 1. التحقق من الحجم
-    content = await file.read()
-    # 0 = بلا سقف حجم: الحدّ الوحيد هو مساحة القرص (يُدار عبر MAX_UPLOAD_SIZE_MB)
-    if settings.max_upload_size_mb > 0 and len(content) > settings.max_upload_size_mb * 1024 * 1024:
-        raise HTTPException(status_code=413, detail=f"الملف كبير جداً. الحد الأقصى {settings.max_upload_size_mb}MB")
-    
-    if len(content) == 0:
-        raise HTTPException(status_code=400, detail="الملف فارغ")
-    
-    # 2. حفظ مؤقت لحساب الـ hash
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="لم يصل اسم الملف")
+
     user = get_or_create_user(db)
-    safe_name = f"{uuid.uuid4().hex}_{file.filename}"
+    safe_name = f"{uuid.uuid4().hex}_{_safe_filename(file.filename)}"
     save_path = os.path.join(settings.storage_path, safe_name)
     os.makedirs(settings.storage_path, exist_ok=True)
-    
-    with open(save_path, "wb") as f:
-        f.write(content)
-    
-    # 3. حساب hash لمنع التكرار (R: معرّف 7)
+
+    size = await _stream_to_disk(file, save_path)
+    if size == 0:
+        os.remove(save_path)
+        raise HTTPException(status_code=400, detail="الملف فارغ")
+
+    # منع التكرار بالـ hash
     file_hash = calculate_file_hash(save_path)
     existing = db.query(Lecture).filter(Lecture.file_hash == file_hash).first()
     if existing and settings.enable_deduplication:
-        # حذف الملف المكرر وإرجاع الموجود
         os.remove(save_path)
         return {
             "id": existing.id,
             "title": existing.title,
             "status": existing.status,
-            "message": "هذا الملف تم رفعه مسبقاً - تم إرجاع المحاضرة الأصلية لتوفير الوقت والتكلفة",
+            "message": "هذا الملف مرفوع مسبقاً — أعدنا لك المحاضرة نفسها بدل إعادة المعالجة",
             "deduplicated": True
         }
-    
-    # 4. إنشاء سجل المحاضرة
+
     lecture = Lecture(
         user_id=user.id,
-        title=title or file.filename[:100],
+        title=title or os.path.splitext(os.path.basename(file.filename))[0][:100],
         original_filename=file.filename,
         file_path=save_path,
         file_hash=file_hash,
-        file_size=len(content),
+        file_size=size,
         mime_type=file.content_type or "unknown",
         status="queued",
         progress=0
@@ -251,18 +287,130 @@ async def upload_lecture(
     db.add(lecture)
     db.commit()
     db.refresh(lecture)
-    
-    # 5. إرسال إلى Queue (Celery إن توفّر، وإلا معالجة في خيط خلفي)
+
     dispatch_processing(lecture.id)
-    
     return {
         "id": lecture.id,
         "title": lecture.title,
         "status": lecture.status,
         "hash": file_hash,
-        "message": "تم الرفع بنجاح - جاري المعالجة في الخلفية",
+        "message": "تم الرفع — جاري التحليل في الخلفية",
         "deduplicated": False
     }
+
+
+# ------------------------------------------------------------------ رفع مجزّأ
+@router.post("/upload/init")
+def upload_init(
+    filename: str = Form(...),
+    size: int = Form(0),
+    title: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """
+    بداية رفع مجزّأ للملفات الكبيرة (فيديو/صوت طويل).
+    يعيد upload_id + حجم القطعة المقترح، ثم تُرفع القطع بالتتابع، وآخر خطوة /upload/complete.
+    """
+    if settings.max_upload_size_mb > 0 and size > settings.max_upload_size_mb * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="الملف أكبر من الحد المضبوط")
+
+    upload_id = uuid.uuid4().hex
+    part_dir = os.path.join(settings.storage_path, f".parts_{upload_id}")
+    os.makedirs(part_dir, exist_ok=True)
+
+    tmp_name = f"{upload_id}_{_safe_filename(filename)}"
+    with open(os.path.join(settings.storage_path, f".meta_{upload_id}.json"), "w",
+              encoding="utf-8") as f:
+        import json
+        json.dump({"filename": filename, "title": title, "size": size,
+                   "part_dir": part_dir, "tmp_name": tmp_name}, f, ensure_ascii=False)
+
+    return {"upload_id": upload_id, "chunk_size": 8 * 1024 * 1024, "received": 0}
+
+
+@router.post("/upload/chunk")
+async def upload_chunk(
+    upload_id: str = Form(...),
+    index: int = Form(...),
+    chunk: UploadFile = File(...),
+):
+    """استقبال قطعة واحدة. آمنة لإعادة المحاولة (نفس الـ index يُستبدل)."""
+    meta_path = os.path.join(settings.storage_path, f".meta_{upload_id}.json")
+    if not os.path.exists(meta_path):
+        raise HTTPException(status_code=404, detail="جلسة الرفع غير موجودة — ابدأ من جديد")
+
+    part_dir = os.path.join(settings.storage_path, f".parts_{upload_id}")
+    os.makedirs(part_dir, exist_ok=True)
+    part_path = os.path.join(part_dir, f"{index:06d}.part")
+
+    size = 0
+    with open(part_path, "wb") as f:
+        while True:
+            buf = await chunk.read(1024 * 1024)
+            if not buf:
+                break
+            size += len(buf)
+            f.write(buf)
+    return {"ok": True, "index": index, "bytes": size}
+
+
+@router.post("/upload/complete")
+def upload_complete(upload_id: str = Form(...), db: Session = Depends(get_db)):
+    """يجمع القطع بالترتيب، ينشئ المحاضرة، ويطلق المعالجة."""
+    import json
+
+    meta_path = os.path.join(settings.storage_path, f".meta_{upload_id}.json")
+    part_dir = os.path.join(settings.storage_path, f".parts_{upload_id}")
+    if not os.path.exists(meta_path) or not os.path.isdir(part_dir):
+        raise HTTPException(status_code=404, detail="جلسة الرفع غير موجودة")
+
+    meta = json.loads(open(meta_path, encoding="utf-8").read())
+    parts = sorted(f for f in os.listdir(part_dir) if f.endswith(".part"))
+    if not parts:
+        raise HTTPException(status_code=400, detail="لم تصل أي قطعة")
+
+    dest = os.path.join(settings.storage_path, meta["tmp_name"])
+    with open(dest, "wb") as out:
+        for part in parts:
+            with open(os.path.join(part_dir, part), "rb") as src:
+                shutil.copyfileobj(src, out, 1024 * 1024)
+
+    total = os.path.getsize(dest)
+    shutil.rmtree(part_dir, ignore_errors=True)
+    os.remove(meta_path)
+
+    if total == 0:
+        os.remove(dest)
+        raise HTTPException(status_code=400, detail="الملف المجمَّع فارغ")
+
+    file_hash = calculate_file_hash(dest)
+    existing = db.query(Lecture).filter(Lecture.file_hash == file_hash).first()
+    if existing and settings.enable_deduplication:
+        os.remove(dest)
+        return {"id": existing.id, "title": existing.title, "status": existing.status,
+                "deduplicated": True,
+                "message": "هذا الملف مرفوع مسبقاً — أعدنا لك المحاضرة نفسها"}
+
+    user = get_or_create_user(db)
+    lecture = Lecture(
+        user_id=user.id,
+        title=meta.get("title") or os.path.splitext(os.path.basename(meta["filename"]))[0][:100],
+        original_filename=meta["filename"],
+        file_path=dest,
+        file_hash=file_hash,
+        file_size=total,
+        mime_type="application/octet-stream",
+        status="queued",
+        progress=0,
+    )
+    db.add(lecture)
+    db.commit()
+    db.refresh(lecture)
+    dispatch_processing(lecture.id)
+    return {"id": lecture.id, "title": lecture.title, "status": lecture.status,
+            "size": total, "deduplicated": False,
+            "message": "تم تجميع الملف — جاري التحليل في الخلفية"}
+
 
 @router.get("")
 def list_lectures(db: Session = Depends(get_db), q: Optional[str] = Query(None), limit: int = 50):
@@ -304,9 +452,7 @@ def get_lecture(lecture_id: int, db: Session = Depends(get_db)):
         "error": lecture.error_message,
         "created_at": lecture.created_at.isoformat() if lecture.created_at else None,
         "mime_type": lecture.mime_type,
-        "is_media": os.path.splitext(lecture.file_path or "")[1].lower() in {
-            ".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac", ".webm", ".mp4", ".mov", ".avi"
-        },
+        "is_media": _looks_media(lecture.file_path or ""),
         "transcript": {
             "text": transcript.full_text if transcript else None,
             "segments": transcript.segments if transcript else [],

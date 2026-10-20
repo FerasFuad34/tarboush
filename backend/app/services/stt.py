@@ -4,6 +4,8 @@
 """
 import os
 import subprocess
+import shutil
+import tempfile
 from typing import List, Dict, Tuple
 from app.core.config import settings
 
@@ -35,23 +37,69 @@ class STTService:
             return None
 
     def _extract_audio(self, input_path: str) -> str:
-        """استخراج الصوت إلى wav 16kHz mono باستخدام ffmpeg"""
-        output_path = input_path + ".wav"
-        if os.path.exists(output_path):
+        """
+        يستخرج مسار الصوت من أي ملف (فيديو أو صوت بأي حاوية) إلى WAV 16kHz mono.
+        -vn يمنع نسخ الفيديو داخل الملف الناتج، ويقلّل الحجم والذاكرة.
+        """
+        output_path = input_path + ".16k.wav"
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
             return output_path
-        
-        # إذا كان الملف صوتياً أصلاً، نحاول تحويله
+
+        filters = []
+        if settings.enable_denoise:
+            # تقليل ضجيج القاعات/المروحة قبل التفريغ (خفيف ولا يشوّه الكلام)
+            filters.append("highpass=f=80")
+            filters.append("lowpass=f=7800")
+        cmd = ["ffmpeg", "-y", "-v", "error", "-i", input_path, "-vn",
+               "-map", "0:a:0", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le"]
+        if filters:
+            cmd += ["-af", ",".join(filters)]
+        cmd.append(output_path)
         try:
-            cmd = [
-                "ffmpeg", "-y", "-i", input_path,
-                "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
-                output_path
-            ]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            return output_path
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.PIPE, timeout=3600)
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 1024:
+                return output_path
+        except subprocess.CalledProcessError as e:
+            detail = (e.stderr or b"").decode("utf-8", "ignore")[-400:]
+            print(f"[STT] ffmpeg تعذّر: {detail}")
         except Exception as e:
-            print(f"[STT] ffmpeg فشل، استخدام الملف الأصلي: {e}")
-            return input_path
+            print(f"[STT] ffmpeg استثناء: {e}")
+
+        # إن كان الملف wav بصيغة غير مدعومة، نعيد المحاولة بالمسار الأصلي
+        return input_path
+
+    @staticmethod
+    def _duration(path: str) -> float:
+        """مدة الملف بالثواني عبر ffprobe (0 إن تعذّر)."""
+        try:
+            out = subprocess.run(
+                ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=nw=1:nk=1", path],
+                capture_output=True, timeout=60).stdout.decode("utf-8", "ignore").strip()
+            return float(out)
+        except Exception:
+            return 0.0
+
+    def _split_wav(self, wav_path: str, seconds: int) -> list:
+        """يقسّم WAV طويلاً إلى أجزاء — يبقي الذاكرة ثابتة مهما طالت المحاضرة."""
+        chunks = []
+        tmpdir = tempfile.mkdtemp(prefix="stt_chunks_")
+        out_pattern = os.path.join(tmpdir, "c_%04d.wav")
+        try:
+            subprocess.run(
+                ["ffmpeg", "-y", "-v", "error", "-i", wav_path,
+                 "-f", "segment", "-segment_time", str(seconds),
+                 "-segment_format", "wav", "-reset_timestamps", "1",
+                 "-c:a", "pcm_s16le", "-ar", "16000", "-ac", "1",
+                 out_pattern],
+                check=True, capture_output=True, timeout=7200)
+            chunks = sorted(
+                os.path.join(tmpdir, f) for f in os.listdir(tmpdir) if f.endswith(".wav")
+            )
+        except Exception as e:
+            print(f"[STT] تعذّر التقسيم ({e}) — سنفرّغ الملف كاملاً")
+        return chunks
 
     @staticmethod
     def _read_wav_mono16k(path: str):
@@ -73,62 +121,104 @@ class STTService:
             print(f"[STT] تعذر قراءة WAV محلياً: {e}")
             return None
 
-    def transcribe_local(self, file_path: str, hint: str = "") -> Tuple[str, List[Dict]]:
-        """تفريغ محلي عبر faster-whisper"""
+    def transcribe_local(self, file_path: str, hint: str = "",
+                         on_progress=None) -> Tuple[str, List[Dict]]:
+        """
+        تفريغ محلي عبر faster-whisper.
+        المحاضرات الطويلة تُقسَّم آلياً إلى أجزاء (`AUDIO_CHUNK_SECONDS`) حتى تبقى
+        الذاكرة ثابتة: محاضرة ساعة على جهاز عادي تعمل تماماً كما محاضرة دقيقة.
+        """
         if not settings.stt_enabled:
             raise ValueError(
-                "هذا الخادم يعمل في وضع «النصوص فقط» ولا يدعم تفريغ الصوت "
-                "(الخطة المجانية في Render بلا ffmpeg/ذاكرة كافية). "
-                "ارفع PDF أو PPTX أو DOCX أو TXT، أو شغّل النسخة المحلية للحصول على التفريغ الصوتي."
+                "تفريغ الصوت معطَّل على هذا الخادم (STT_ENABLED=false). "
+                "في النسخة المحلية اجعله true — النسخة المكتبية تدعم الصوت والفيديو بلا قيود."
             )
         model = self._load_local_model()
         if model is None:
-            # Fallback: رسالة واضحة للمستخدم
-            raise ValueError("تعذر تحميل نموذج التفريغ المحلي (faster-whisper). تأكد من تثبيت الحزمة وتوفر مساحة كافية، أو بدّل STT_PROVIDER=groq مع مفتاح مجاني.")
+            raise ValueError(
+                "تعذر تحميل نموذج التفريغ المحلي (faster-whisper). "
+                "ثبّت الحزمة: pip install faster-whisper، وتأكد من توفر مساحة كافية، "
+                "أو بدّل STT_PROVIDER=groq مع مفتاح مجاني."
+            )
 
         audio_path = self._extract_audio(file_path)
-        
-        # إعدادات محسّنة للعربية + مصطلحات إنجليزية
-        # initial_prompt يساعد Whisper على التعرف على السياق الأكاديمي
-        # تلميح أولي (initial_prompt) = عنوان المحاضرة + عبارة أكاديمية عامة.
-        # القياس على عيّنة مرجعية أظهر تحسّن WER من 21.7% إلى 11.7% عند تزويد النموذج
-        # بمصطلحات المادة، لذلك نمرّر عنوان المحاضرة دائماً كتلميح.
+        total = self._duration(audio_path)
+
         base_prompt = (
-            "هذه محاضرة جامعية باللغة العربية الفصحى مع مصطلحات علمية بالإنجليزية "
-            "مثل computer, system, algorithm, physics, chemistry, medicine, engineering"
+            "هذه محاضرة تعليمية مسجّلة. قد تكون بأي لغة وبأي تخصص. "
+            "اكتب المصطلحات الأجنبية والأسماء كما وردت، والأرقام بدقة."
         )
         initial_prompt = f"{hint.strip()}. {base_prompt}" if hint.strip() else base_prompt
-        
-        audio_array = self._read_wav_mono16k(audio_path)
-        audio_input = audio_array if audio_array is not None else audio_path
-        segments, info = model.transcribe(
-            audio_input,
-            language="ar",
-            beam_size=settings.whisper_beam_size,
-            vad_filter=True,  # إزالة الصمت والضجيج
-            vad_parameters=dict(min_silence_duration_ms=500),
-            initial_prompt=initial_prompt,
-            condition_on_previous_text=False,  # يقلل الهلوسة
-            word_timestamps=False
-        )
-        
-        full_text = ""
-        segments_list = []
-        for seg in segments:
-            seg_text = seg.text.strip()
-            # Whisper لا يضع علامات ترقيم نهاية كل مقطع؛ نضيف نقطة حتى تعمل
-            # تقسيمات الجمل في التلخيص والأسئلة بشكل صحيح
-            if seg_text and seg_text[-1] not in ".!؟":
-                seg_text += "."
-            full_text += seg_text + " "
-            segments_list.append({
-                "start": round(seg.start, 2),
-                "end": round(seg.end, 2),
-                "text": seg.text.strip(),
-            })
-        
-        full_text = full_text.strip()
-        print(f"[STT] تم التفريغ: {len(segments_list)} مقطع، {len(full_text.split())} كلمة، اللغة: {info.language}")
+
+        # auto = يكتشف اللغة بنفسه (محاضرات غير عربية تعمل أيضاً)
+        lang = None if (settings.stt_language or "").lower() in {"", "auto", "detect"} \
+            else settings.stt_language
+
+        chunk_seconds = max(60, int(settings.audio_chunk_seconds or 900))
+        pieces = self._split_wav(audio_path, chunk_seconds) if total > chunk_seconds * 1.2 else []
+        chunk_dir = os.path.dirname(pieces[0]) if pieces else None
+        derived = audio_path if audio_path != file_path else None
+
+        detected_lang = {"code": lang}
+
+        def run(audio_input, offset: float):
+            segs, info = model.transcribe(
+                audio_input,
+                language=detected_lang["code"],
+                beam_size=settings.whisper_beam_size,
+                vad_filter=True,
+                vad_parameters=dict(min_silence_duration_ms=500),
+                initial_prompt=initial_prompt,
+                condition_on_previous_text=False,
+                word_timestamps=False,
+            )
+            out = []
+            for seg in segs:
+                text = seg.text.strip()
+                if text and text[-1] not in ".!?:؟،":
+                    text += "."
+                if text:
+                    out.append({"start": round(seg.start + offset, 2),
+                                "end": round(seg.end + offset, 2),
+                                "text": text})
+            # نثبّت اللغة بعد أول جزء حتى لا تتبدّل بين الأجزاء
+            if detected_lang["code"] is None and out:
+                code = getattr(info, "language", None)
+                if code:
+                    detected_lang["code"] = code
+            return out, info
+
+        segments_list: List[Dict] = []
+        detected = None
+        try:
+         if pieces:
+            for i, piece in enumerate(pieces):
+                if on_progress:
+                    mins = int(total // 60)
+                    on_progress(f"تفريغ الجزء {i + 1}/{len(pieces)} من أصل {mins} دقيقة")
+                arr = self._read_wav_mono16k(piece)
+                part, info = run(piece if arr is None else arr, offset=i * chunk_seconds)
+                detected = detected or getattr(info, "language", None)
+                segments_list.extend(part)
+         else:
+            if on_progress and total:
+                on_progress(f"تفريغ {int(total // 60)} دقيقة صوت")
+            part, info = run(audio_path, 0.0)
+            detected = getattr(info, "language", None)
+            segments_list = part
+        finally:
+            # لا نترك ملفات وسيطة: محاضرة ساعة = مئات الميغابايت بلا داعٍ
+            if chunk_dir:
+                shutil.rmtree(chunk_dir, ignore_errors=True)
+            if derived:
+                try:
+                    os.remove(derived)
+                except OSError:
+                    pass
+
+        full_text = " ".join(s["text"] for s in segments_list).strip()
+        print(f"[STT] تم التفريغ: {len(segments_list)} مقطع، "
+              f"{len(full_text.split())} كلمة، اللغة: {detected}")
         return full_text, segments_list
 
     def transcribe_groq(self, file_path: str) -> Tuple[str, List[Dict]]:
@@ -165,15 +255,15 @@ class STTService:
         
         return full_text, segments_list
 
-    def transcribe(self, file_path: str, hint: str = "") -> Tuple[str, List[Dict]]:
+    def transcribe(self, file_path: str, hint: str = "",
+                   on_progress=None) -> Tuple[str, List[Dict]]:
         """
         دالة موحدة - تختار المزود تلقائياً.
         hint: عنوان المحاضرة أو مصطلحاتها لتحسين دقة التفريغ (Hotwords).
         """
         if self.provider == "groq":
             return self.transcribe_groq(file_path)
-        else:
-            return self.transcribe_local(file_path, hint=hint)
+        return self.transcribe_local(file_path, hint=hint, on_progress=on_progress)
 
     def transcribe_text_file(self, file_path: str) -> Tuple[str, List[Dict]]:
         """معالجة الملفات النصية مباشرة (PDF/DOCX/TXT) - ليست صوت"""

@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://localhost:5173"
     
     whisper_beam_size: int = 5
+    # "auto" = يكتشف اللغة من الصوت. لا نفرض العربية: أي تخصص وأي لغة يعمل.
+    stt_language: str = "auto"
     whisper_language: str = "ar"
     enable_deduplication: bool = True
 
@@ -45,6 +47,7 @@ class Settings(BaseSettings):
     # عند 0 يرفض النظام الملف فقط إذا نفدت مساحة القرص.
     max_upload_size_mb: int = 0
     # تفريغ المحاضرات الطويلة على أجزاء لتقليل استهلاك الذاكرة (ثانية)
+    # 900 = ربع ساعة لكل جزء؛ الذاكرة تبقى ثابتة مهما طالت المحاضرة.
     audio_chunk_seconds: int = 900
     # تنقية الصوت قبل التفريغ (إزالة ضجيج القاعة)
     enable_denoise: bool = True

@@ -4,7 +4,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 import os
 
 from app.core.config import settings
@@ -44,14 +44,37 @@ async def startup():
 # Routes
 app.include_router(lectures_router, prefix="/api/v1")
 
-@app.get("/")
+@app.get("/", include_in_schema=False)
 def root():
+    # إن كانت الواجهة مبنية (نسخة محلية) نقدّمها؛ وإلا نعيد بطاقة معلومات الـ API
+    index = os.path.join(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")),
+        "index.html",
+    )
+    if os.path.isfile(index):
+        return FileResponse(index)
     return {
         "name": "طربوش",
         "version": "1.0.0-M1",
         "status": "يعمل ✅",
         "docs": "/docs",
         "frontend": settings.cors_origins
+    }
+
+
+@app.get("/api-info", include_in_schema=False)
+def api_info():
+    return {
+        "name": "طربوش",
+        "version": "1.0.0-M1",
+        "docs": "/docs",
+        "capabilities": {
+            "any_format": True,
+            "max_upload_size_mb": settings.max_upload_size_mb,
+            "chunked_upload": True,
+            "audio_video": True,
+            "dynamic_content": True,
+        },
     }
 
 @app.get("/health")
@@ -148,6 +171,27 @@ def health():
 # تقديم ملفات التصدير
 if os.path.exists(settings.export_path):
     app.mount("/exports", StaticFiles(directory=settings.export_path), name="exports")
+
+# ---------------------------------------------------------------------------
+# تقديم الواجهة المبنية (frontend/dist) — يجعل النسخة المحلية نقرة واحدة:
+#   ابدأ الخادم فقط، وافتح http://127.0.0.1:8000 — الواجهة والـ API على منفذ واحد.
+# ---------------------------------------------------------------------------
+_FRONTEND_DIST = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")
+)
+if os.path.isdir(_FRONTEND_DIST):
+    _assets = os.path.join(_FRONTEND_DIST, "assets")
+    if os.path.isdir(_assets):
+        app.mount("/assets", StaticFiles(directory=_assets), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    async def serve_spa(full_path: str):
+        """أي مسار غير API يُعيد index.html (توجيه React Router)."""
+        candidate = os.path.join(_FRONTEND_DIST, full_path)
+        if full_path and os.path.isfile(candidate):
+            return FileResponse(candidate)
+        return FileResponse(os.path.join(_FRONTEND_DIST, "index.html"))
+    print(f"[UI] الواجهة المبنية تُقدَّم من {_FRONTEND_DIST}")
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc: HTTPException):
