@@ -19,15 +19,19 @@ NAME = f"tarboush-M1-v{VERSION}.zip"
 OUT = os.path.join(OUT_DIR, NAME)
 
 EXCLUDE_DIRS = {
-    "node_modules", "__pycache__", ".git", ".venv", "venv", "dist", "build",
+    "node_modules", "__pycache__", ".git", ".venv", "venv", "build",
     "storage", ".pytest_cache", ".mypy_cache", ".next", "coverage",
 }
+# نستثني dist عدا frontend/dist: الواجهة المبنية ضرورية للتشغيل بنقرة واحدة
+KEEP_DIST = os.path.join("frontend", "dist")
 EXCLUDE_SUFFIX = (".pyc", ".pyo", ".db", ".db-journal", ".log", ".zip", ".tsbuildinfo")
 
 
 def included(path: str) -> bool:
-    parts = os.path.relpath(path, ROOT).split(os.sep)
-    if any(p in EXCLUDE_DIRS for p in parts[:-1]):
+    rel = os.path.relpath(path, ROOT)
+    parts = rel.split(os.sep)
+    in_keep = rel.startswith(KEEP_DIST + os.sep) or rel == KEEP_DIST
+    if any(p in EXCLUDE_DIRS for p in parts[:-1]) and not in_keep:
         return False
     if parts[0] == "storage":
         return False
